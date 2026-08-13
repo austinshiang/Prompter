@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartPrompter 智慧口播提詞機</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            user-select: none;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.5);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.8);
+        }
+        /* Custom hide UI animation */
+        .autohide-ui {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .autohide-ui.hidden-mode {
+            opacity: 0.15;
+            transform: translateY(10px);
+        }
+        .autohide-ui.hidden-mode:hover {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col overflow-hidden bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
+
+    <!-- Navigation / Top Control Bar -->
+    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-2.5 flex items-center justify-between shrink-0 z-30">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <i class="fa-solid font-bold text-white text-lg fa-display"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-base tracking-wide flex items-center gap-2">
+                    SmartPrompter <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">口播神器</span>
+                </h1>
+            </div>
+        </div>
+
+        <!-- Mode Switcher -->
+        <div class="flex items-center bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
+            <button id="btn-mode-edit" onclick="switchMode('edit')" class="px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 bg-indigo-600 text-white shadow-sm flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-xs"></i> 編輯文案
+            </button>
+            <button id="btn-mode-prompt" onclick="switchMode('prompt')" class="px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-play text-xs"></i> 提詞模式
+            </button>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button onclick="toggleKeyShortcutsModal()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition" title="快捷鍵說明">
+                <i class="fa-solid fa-keyboard text-base"></i>
+            </button>
+            <button onclick="toggleCamera()" id="btn-webcam" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-2">
+                <i class="fa-solid fa-video text-indigo-400"></i> <span id="webcam-btn-text">開啟鏡頭背景</span>
+            </button>
+            <button onclick="toggleFullscreen()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition" title="全螢幕">
+                <i class="fa-solid fa-expand text-base" id="fullscreen-icon"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Wrapper -->
+    <main class="flex-1 relative overflow-hidden flex">
+        
+        <!-- ================= EDIT MODE PANEL ================= -->
+        <div id="view-edit" class="w-full h-full flex flex-col md:flex-row p-4 md:p-6 gap-6 overflow-y-auto">
+            <!-- Left Panel: Textarea -->
+            <div class="flex-1 flex flex-col bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden min-h-[400px]">
+                <div class="bg-slate-800/50 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-align-left text-indigo-400 text-sm"></i>
+                        <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">講稿內容編輯</span>
+                    </div>
+                    <div class="flex items-center space-x-3 text-xs text-slate-400">
+                        <span id="stat-char-count">0 字</span>
+                        <span>•</span>
+                        <span id="stat-read-time">預估 0 分鐘</span>
+                    </div>
+                </div>
+                
+                <textarea id="script-input" class="flex-1 p-5 bg-transparent text-slate-100 text-lg leading-relaxed focus:outline-none resize-none font-normal placeholder-slate-600" placeholder="請在此輸入或貼上您的口播文案腳本...&#10;&#10;提示：提詞時建議將句子適當換行，講起來會更加順暢自然！"></textarea>
+                
+                <!-- Editor Bottom Toolbar -->
+                <div class="bg-slate-900 border-t border-slate-800 p-3 flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <button onclick="loadSampleScript()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-lg border border-slate-700 transition">
+                            <i class="fa-solid fa-wand-magic-sparkles text-amber-400 mr-1"></i> 載入範例腳本
+                        </button>
+                        <button onclick="clearScript()" class="px-3 py-1.5 bg-slate-800 hover:bg-rose-900/40 hover:text-rose-300 text-xs text-slate-400 rounded-lg border border-slate-700 transition">
+                            <i class="fa-solid fa-trash-can mr-1"></i> 清空
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="file" id="file-import" class="hidden" accept=".txt" onchange="importTxtFile(event)">
+                        <button onclick="document.getElementById('file-import').click()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-lg border border-slate-700 transition">
+                            <i class="fa-solid fa-file-import mr-1"></i> 匯入 TXT
+                        </button>
+                        <button onclick="startPrompterWithCountdown()" class="px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/30 transition flex items-center gap-2">
+                            <i class="fa-solid fa-circle-play"></i> 開始口播提詞
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Quick Settings Previews -->
+            <div class="w-full md:w-80 flex flex-col gap-5">
+                <!-- Speaker Cue Helper Card -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-lightbulb text-amber-400"></i> 演講者提示語法 (不讀出)
+                    </h3>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        在講稿加入提示，提詞時會自動顯示為專屬標籤，協助掌握拍攝節奏與動作！
+                    </p>
+                    <div class="space-y-2 pt-1">
+                        <button onclick="insertTag('[標題: 段落主題]')" class="w-full px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-left text-xs text-amber-300 font-medium transition flex items-center justify-between">
+                            <span><i class="fa-solid fa-bookmark mr-1.5"></i> 插入段落標題</span>
+                            <span class="text-[10px] opacity-70"># 標題</span>
+                        </button>
+                        <button onclick="insertTag('[提示: 微笑/展現產品]')" class="w-full px-3 py-2 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 rounded-xl text-left text-xs text-sky-300 font-medium transition flex items-center justify-between">
+                            <span><i class="fa-solid fa-clapperboard mr-1.5"></i> 插入動作提示</span>
+                            <span class="text-[10px] opacity-70">[提示: xxx]</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Saved Scripts Panel -->
+                <div class="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3 flex-1 flex flex-col min-h-[220px]">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-box-archive text-indigo-400"></i> 本地快速存檔
+                        </h3>
+                        <button onclick="saveCurrentScript()" class="text-xs text-indigo-400 hover:text-indigo-300 font-medium">
+                            + 儲存當前草稿
+                        </button>
+                    </div>
+                    <div id="saved-scripts-list" class="flex-1 overflow-y-auto space-y-2 pr-1 text-xs text-slate-400">
+                        <!-- Saved scripts inserted by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= PROMPTER DISPLAY MODE ================= -->
+        <div id="view-prompt" class="hidden absolute inset-0 bg-slate-950 flex flex-col justify-center items-center overflow-hidden">
+            
+            <!-- Webcam Background Container -->
+            <video id="webcam-video" autoplay playsinline muted class="hidden absolute inset-0 w-full h-full object-cover opacity-30 z-0 pointer-events-none"></video>
+
+            <!-- Focus Guide Line Highlight Overlay -->
+            <div id="reading-guide" class="absolute w-full border-y-2 border-indigo-500/40 bg-indigo-500/10 pointer-events-none z-10 transition-all duration-300" style="top: 35%; height: 90px;">
+                <div class="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-indigo-400 text-xs font-mono font-bold opacity-70">
+                    <i class="fa-solid fa-chevron-right text-xs"></i> 視線焦線
+                </div>
+            </div>
+
+            <!-- Prompter Scroll Container -->
+            <div id="prompter-box" class="w-full h-full overflow-y-auto z-10 scroll-smooth px-8 py-[40vh] transition-all" onscroll="handlePrompterScroll()">
+                <div id="prompter-content-wrapper" class="max-w-4xl mx-auto transition-transform duration-200">
+                    <div id="prompter-text" class="font-bold leading-relaxed text-center tracking-wide text-slate-100 space-y-2">
+                        <!-- Prompter text rendered here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Floating HUD Control Bar -->
+            <div id="prompter-hud" class="autohide-ui absolute bottom-6 inset-x-0 mx-auto max-w-3xl w-[92%] bg-slate-900/90 backdrop-blur-md border border-slate-800/80 rounded-2xl shadow-2xl p-3 z-20 flex flex-col gap-2 transition-opacity">
+                
+                <!-- Main Control Buttons & Sliders -->
+                <div class="flex items-center justify-between gap-3">
+                    <!-- Left: Play/Pause/Reset -->
+                    <div class="flex items-center space-x-2">
+                        <button id="btn-play-pause" onclick="togglePlayPause()" class="w-11 h-11 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center text-lg shadow-lg shadow-indigo-600/30 transition">
+                            <i id="icon-play-pause" class="fa-solid fa-play"></i>
+                        </button>
+                        <button onclick="resetPrompterScroll()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="回到頂部 (R)">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                    </div>
+
+                    <!-- Middle: Speed Control Slider -->
+                    <div class="flex-1 flex items-center space-x-3 bg-slate-800/60 px-3.5 py-1.5 rounded-xl border border-slate-700/50">
+                        <i class="fa-solid fa-gauge-high text-xs text-indigo-400" title="滾動速度"></i>
+                        <span class="text-xs text-slate-400 w-8">速度</span>
+                        <input type="range" id="slider-speed" min="1" max="100" value="25" class="w-full accent-indigo-500 h-1.5 bg-slate-700 rounded-lg cursor-pointer" oninput="updateSpeedFromSlider(this.value)">
+                        <span id="speed-display" class="text-xs font-mono font-bold text-indigo-300 w-7 text-right">25</span>
+                    </div>
+
+                    <!-- Right: Speech Sync Toggle & Extra Settings -->
+                    <div class="flex items-center space-x-2">
+                        <button id="btn-speech-sync" onclick="toggleSpeechRecognition()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition flex items-center gap-1.5" title="啟用語音自動跟隨">
+                            <i class="fa-solid fa-microphone text-rose-400"></i>
+                            <span id="speech-sync-text" class="hidden sm:inline">語音跟隨</span>
+                        </button>
+                        <button onclick="toggleHudSettingsDrawer()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="更多調整">
+                            <i class="fa-solid fa-sliders"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Extended Settings Row (Font size, margin width, guide height) -->
+                <div id="hud-extra-settings" class="hidden pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <!-- Font Size Slider -->
+                    <div class="flex items-center space-x-2 bg-slate-800/40 p-2 rounded-lg">
+                        <i class="fa-solid fa-text-height text-slate-400"></i>
+                        <span class="text-slate-400">字級</span>
+                        <input type="range" id="slider-fontsize" min="24" max="96" value="52" class="w-full accent-indigo-500 h-1 bg-slate-700 rounded cursor-pointer" oninput="updateFontSize(this.value)">
+                        <span id="fontsize-display" class="font-mono text-indigo-300">52</span>
+                    </div>
+
+                    <!-- Text Margin Width Slider -->
+                    <div class="flex items-center space-x-2 bg-slate-800/40 p-2 rounded-lg">
+                        <i class="fa-solid fa-arrows-left-right text-slate-400"></i>
+                        <span class="text-slate-400">邊界</span>
+                        <input type="range" id="slider-margin" min="40" max="100" value="85" class="w-full accent-indigo-500 h-1 bg-slate-700 rounded cursor-pointer" oninput="updateMarginWidth(this.value)">
+                        <span id="margin-display" class="font-mono text-indigo-300">85%</span>
+                    </div>
+
+                    <!-- Alignment Control -->
+                    <div class="flex items-center justify-between bg-slate-800/40 p-2 rounded-lg">
+                        <span class="text-slate-400">對齊</span>
+                        <div class="flex items-center space-x-1">
+                            <button onclick="setTextAlign('left')" class="px-2 py-0.5 rounded bg-slate-700 hover:bg-indigo-600 text-slate-200">
+                                <i class="fa-solid fa-align-left"></i>
+                            </button>
+                            <button onclick="setTextAlign('center')" class="px-2 py-0.5 rounded bg-slate-700 hover:bg-indigo-600 text-slate-200">
+                                <i class="fa-solid fa-align-center"></i>
+                            </button>
+                            <button onclick="setTextAlign('right')" class="px-2 py-0.5 rounded bg-slate-700 hover:bg-indigo-600 text-slate-200">
+                                <i class="fa-solid fa-align-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Countdown Overlay -->
+            <div id="countdown-overlay" class="hidden absolute inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex flex-col items-center justify-center">
+                <div id="countdown-number" class="text-9xl font-black text-transparent bg-clip-text bg-gradient-to-tr from-indigo-500 to-purple-400 animate-bounce">
+                    3
+                </div>
+                <p class="text-slate-400 text-sm mt-4 tracking-widest uppercase">準備拍攝，即將開始提詞...</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div id="modal-shortcuts" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-keyboard text-indigo-400"></i> 提詞機鍵盤快捷鍵
+                </h3>
+                <button onclick="toggleKeyShortcutsModal()" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="space-y-2.5 text-xs text-slate-300">
+                <div class="flex justify-between p-2 rounded bg-slate-800/60">
+                    <span class="font-mono bg-slate-700 px-2 py-0.5 rounded text-indigo-300">Space 鍵</span>
+                    <span>播放 / 暫停提詞</span>
+                </div>
+                <div class="flex justify-between p-2 rounded bg-slate-800/60">
+                    <span class="font-mono bg-slate-700 px-2 py-0.5 rounded text-indigo-300">↑ / ↓ 方向鍵</span>
+                    <span>加快 / 減慢滾動速度</span>
+                </div>
+                <div class="flex justify-between p-2 rounded bg-slate-800/60">
+                    <span class="font-mono bg-slate-700 px-2 py-0.5 rounded text-indigo-300">← / → 方向鍵</span>
+                    <span>縮小 / 放大字型</span>
+                </div>
+                <div class="flex justify-between p-2 rounded bg-slate-800/60">
+                    <span class="font-mono bg-slate-700 px-2 py-0.5 rounded text-indigo-300">R 鍵</span>
+                    <span>重設並回到最頂部</span>
+                </div>
+                <div class="flex justify-between p-2 rounded bg-slate-800/60">
+                    <span class="font-mono bg-slate-700 px-2 py-0.5 rounded text-indigo-300">F 鍵</span>
+                    <span>切換全螢幕顯示</span>
+                </div>
+                <div class="flex justify-between p-2 rounded bg-slate-800/60">
+                    <span class="font-mono bg-slate-700 px-2 py-0.5 rounded text-indigo-300">Esc 鍵</span>
+                    <span>返回文案編輯模式</span>
+                </div>
+            </div>
+            <button onclick="toggleKeyShortcutsModal()" class="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl text-xs transition">
+                我知道了
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // State Management
+        let appState = {
+            mode: 'edit', // 'edit' or 'prompt'
+            isPlaying: false,
+            speed: 25, // Scroll speed standard factor
+            fontSize: 52,
+            marginWidth: 85,
+            textAlign: 'center',
+            webcamActive: false,
+            speechSyncActive: false,
+            scrollAccumulator: 0
+        };
+
+        let scrollInterval = null;
+        let webcamStream = null;
+        let speechRecognition = null;
+
+        // DOM Element Cache
+        const scriptInput = document.getElementById('script-input');
+        const prompterBox = document.getElementById('prompter-box');
+        const prompterText = document.getElementById('prompter-text');
+        const prompterWrapper = document.getElementById('prompter-content-wrapper');
+        const viewEdit = document.getElementById('view-edit');
+        const viewPrompt = document.getElementById('view-prompt');
+        const btnPlayPause = document.getElementById('btn-play-pause');
+        const iconPlayPause = document.getElementById('icon-play-pause');
+        const sliderSpeed = document.getElementById('slider-speed');
+        const speedDisplay = document.getElementById('speed-display');
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // Load script from LocalStorage if exists
+            const savedText = localStorage.getItem('smartprompter_script');
+            if (savedText) {
+                scriptInput.value = savedText;
+            } else {
+                loadSampleScript();
+            }
+            updateStats();
+            renderSavedScriptsList();
+
+            // Setup input listener
+            scriptInput.addEventListener('input', () => {
+                updateStats();
+                localStorage.setItem('smartprompter_script', scriptInput.value);
+            });
+
+            // Keyboard shortcut listener
+            document.addEventListener('keydown', handleGlobalKeydown);
+        });
+
+        function updateStats() {
+            const text = scriptInput.value.trim();
+            const charCount = text.length;
+            // Estimated reading time: ~300 Chinese characters per minute for standard speech
+            const minutes = Math.ceil(charCount / 300) || 0;
+            
+            document.getElementById('stat-char-count').innerText = `${charCount} 字`;
+            document.getElementById('stat-read-time').innerText = `預估 ${minutes} 分鐘`;
+        }
+
+        function loadSampleScript() {
+            const sample = `# 開場白
+大家好！歡迎來到今天的口播影片現場。
+
+[提示: 展現自信笑容，指向鏡頭]
+今天我要跟大家分享 3 個讓口播影片觀看率提升 200% 的關鍵技巧！
+
+# 第一點：黃金開場
+[提示: 語速加快，強調重點]
+開頭千萬不要拖泥帶水，直接提出觀眾最關心的痛點或核心結論，鎖定注意力！
+
+# 第二點：眼神與鏡頭聚焦
+[提示: 眼神稍微看著視線焦線，保持自然]
+使用提詞機時，將文案寬度縮窄，並把閱讀焦線放在鏡頭正下方，這樣眼神就不會忽左忽右。
+
+# 第三點：語速與節奏控制
+[提示: 停頓 2 秒，手勢輔助]
+說話時要有高低起伏與適當停頓，給觀眾思考與吸收的時間。
+
+# 結尾 Call to Action
+如果這支影片對你有幫助，別忘了按讚、訂閱並開啟小鈴鐺，我們下期見！`;
+            scriptInput.value = sample;
+            updateStats();
+            localStorage.setItem('smartprompter_script', sample);
+        }
+
+        function insertTag(tagText) {
+            const start = scriptInput.selectionStart;
+            const end = scriptInput.selectionEnd;
+            const val = scriptInput.value;
+            scriptInput.value = val.substring(0, start) + "\n" + tagText + "\n" + val.substring(end);
+            scriptInput.focus();
+            scriptInput.selectionStart = scriptInput.selectionEnd = start + tagText.length + 2;
+            updateStats();
+            localStorage.setItem('smartprompter_script', scriptInput.value);
+        }
+
+        function clearScript() {
+            if (confirm('確定要清空當前文案內容嗎？')) {
+                scriptInput.value = '';
+                updateStats();
+                localStorage.setItem('smartprompter_script', '');
+            }
+        }
+
+        function importTxtFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                scriptInput.value = e.target.result;
+                updateStats();
+                localStorage.setItem('smartprompter_script', scriptInput.value);
+            };
+            reader.readAsText(file);
+        }
+
+        function saveCurrentScript() {
+            const text = scriptInput.value.trim();
+            if (!text) return;
+            let drafts = JSON.parse(localStorage.getItem('smartprompter_drafts') || '[]');
+            const title = text.substring(0, 15).replace(/\n/g, ' ') + '...';
+            drafts.unshift({ id: Date.now(), title: title, content: text, date: new Date().toLocaleDateString() });
+            if (drafts.length > 5) drafts = drafts.slice(0, 5); // Keep max 5
+            localStorage.setItem('smartprompter_drafts', JSON.stringify(drafts));
+            renderSavedScriptsList();
+        }
+
+        function renderSavedScriptsList() {
+            const container = document.getElementById('saved-scripts-list');
+            const drafts = JSON.parse(localStorage.getItem('smartprompter_drafts') || '[]');
+            if (drafts.length === 0) {
+                container.innerHTML = `<div class="text-slate-600 text-center py-4">尚無存檔草稿</div>`;
+                return;
+            }
+            container.innerHTML = drafts.map(d => `
+                <div class="p-2 bg-slate-800/80 hover:bg-slate-800 rounded-lg flex items-center justify-between group cursor-pointer transition" onclick="loadDraft(${d.id})">
+                    <div class="truncate flex-1 pr-2">
+                        <div class="font-medium text-slate-200 truncate">${escapeHtml(d.title)}</div>
+                        <div class="text-[10px] text-slate-500">${d.date}</div>
+                    </div>
+                    <button onclick="event.stopPropagation(); deleteDraft(${d.id})" class="text-slate-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 p-1">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function loadDraft(id) {
+            const drafts = JSON.parse(localStorage.getItem('smartprompter_drafts') || '[]');
+            const draft = drafts.find(d => d.id === id);
+            if (draft) {
+                scriptInput.value = draft.content;
+                updateStats();
+                localStorage.setItem('smartprompter_script', draft.content);
+            }
+        }
+
+        function deleteDraft(id) {
+            let drafts = JSON.parse(localStorage.getItem('smartprompter_drafts') || '[]');
+            drafts = drafts.filter(d => d.id !== id);
+            localStorage.setItem('smartprompter_drafts', JSON.stringify(drafts));
+            renderSavedScriptsList();
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function renderPrompterText(rawText) {
+            if (!rawText || !rawText.trim()) {
+                return `<div class="text-slate-600 py-10">（尚未輸入任何文案，請返回編輯模式貼上講稿）</div>`;
+            }
+
+            const lines = rawText.split('\n');
+            let outputHtml = '';
+
+            lines.forEach(line => {
+                const trimmed = line.trim();
+                if (!trimmed) {
+                    outputHtml += `<div class="h-4"></div>`;
+                    return;
+                }
+
+                // Section Title cue check (starts with # or [標題: / [標題：)
+                if (trimmed.startsWith('#') || /^\[(標題|TITLE)[:：]/i.test(trimmed)) {
+                    const titleText = trimmed.replace(/^#+\s*/, '').replace(/^\[(標題|TITLE)[:：]\s*/i, '').replace(/\]$/, '');
+                    outputHtml += `
+                        <div class="my-6 flex justify-center">
+                            <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-sm font-semibold tracking-wider select-none">
+                                <i class="fa-solid fa-bookmark text-xs text-amber-400"></i>
+                                <span>標題：${escapeHtml(titleText)}</span>
+                                <span class="text-[11px] opacity-70 font-normal">（提示不讀出）</span>
+                            </span>
+                        </div>
+                    `;
+                }
+                // Action Cue check (starts with [提示: / [提示： or (提示: / (提示：)
+                else if (/^[\(\[](提示|CUE|NOTE)[:：]/i.test(trimmed)) {
+                    const cueText = trimmed.replace(/^[\(\[](提示|CUE|NOTE)[:：]\s*/i, '').replace(/[\)\]]$/, '');
+                    outputHtml += `
+                        <div class="my-3 flex justify-center">
+                            <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-xl bg-sky-500/20 border border-sky-500/40 text-sky-300 text-xs font-medium select-none">
+                                <i class="fa-solid fa-clapperboard text-sky-400"></i>
+                                <span>動作提示：${escapeHtml(cueText)}</span>
+                            </span>
+                        </div>
+                    `;
+                }
+                // Standard text line with potential inline tags
+                else {
+                    let formatted = escapeHtml(line);
+                    // Inline cues like [提示: xxx]
+                    formatted = formatted.replace(/\[(提示|CUE)[:：](.*?)\]/g, (m, p1, p2) => `
+                        <span class="inline-flex items-center gap-1 mx-1 px-2 py-0.5 rounded bg-sky-500/20 border border-sky-500/30 text-sky-300 text-xs font-normal align-middle select-none">
+                            <i class="fa-solid fa-lightbulb text-[10px]"></i> ${p2}
+                        </span>
+                    `);
+                    outputHtml += `<div class="py-1">${formatted}</div>`;
+                }
+            });
+
+            return outputHtml;
+        }
+
+        function switchMode(mode) {
+            appState.mode = mode;
+            const btnEdit = document.getElementById('btn-mode-edit');
+            const btnPrompt = document.getElementById('btn-mode-prompt');
+
+            if (mode === 'edit') {
+                pausePrompter();
+                viewEdit.classList.remove('hidden');
+                viewPrompt.classList.add('hidden');
+
+                btnEdit.className = "px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 bg-indigo-600 text-white shadow-sm flex items-center gap-2";
+                btnPrompt.className = "px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2";
+            } else {
+                // Populate prompter text with parsed tags
+                prompterText.innerHTML = renderPrompterText(scriptInput.value);
+                viewEdit.classList.add('hidden');
+                viewPrompt.classList.remove('hidden');
+
+                btnPrompt.className = "px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 bg-indigo-600 text-white shadow-sm flex items-center gap-2";
+                btnEdit.className = "px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2";
+
+                applyPrompterStyles();
+                resetPrompterScroll();
+            }
+        }
+
+        function startPrompterWithCountdown() {
+            switchMode('prompt');
+            const overlay = document.getElementById('countdown-overlay');
+            const numEl = document.getElementById('countdown-number');
+            overlay.classList.remove('hidden');
+
+            let count = 3;
+            numEl.innerText = count;
+
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    numEl.innerText = count;
+                } else if (count === 0) {
+                    numEl.innerText = "GO!";
+                } else {
+                    clearInterval(timer);
+                    overlay.classList.add('hidden');
+                    startPrompter();
+                }
+            }, 900);
+        }
+
+        function togglePlayPause() {
+            if (appState.isPlaying) {
+                pausePrompter();
+            } else {
+                startPrompter();
+            }
+        }
+
+        function startPrompter() {
+            if (appState.isPlaying) return;
+            appState.isPlaying = true;
+            iconPlayPause.className = "fa-solid fa-pause";
+            btnPlayPause.classList.replace('bg-indigo-600', 'bg-amber-600');
+            btnPlayPause.classList.replace('hover:bg-indigo-500', 'hover:bg-amber-500');
+
+            // Scroll loop using RequestAnimationFrame / High frequency timer
+            scrollInterval = setInterval(() => {
+                if (!appState.isPlaying) return;
+                
+                // Speed scale: speed 25 -> ~1px per tick
+                const delta = (appState.speed / 20);
+                appState.scrollAccumulator += delta;
+
+                if (appState.scrollAccumulator >= 1) {
+                    const pixelsToScroll = Math.floor(appState.scrollAccumulator);
+                    prompterBox.scrollTop += pixelsToScroll;
+                    appState.scrollAccumulator -= pixelsToScroll;
+                }
+
+                // Auto stop when reached end
+                if (prompterBox.scrollTop + prompterBox.clientHeight >= prompterBox.scrollHeight - 10) {
+                    pausePrompter();
+                }
+            }, 25);
+        }
+
+        function pausePrompter() {
+            appState.isPlaying = false;
+            if (scrollInterval) clearInterval(scrollInterval);
+            iconPlayPause.className = "fa-solid fa-play";
+            btnPlayPause.classList.replace('bg-amber-600', 'bg-indigo-600');
+            btnPlayPause.classList.replace('hover:bg-amber-500', 'hover:bg-indigo-500');
+        }
+
+        function resetPrompterScroll() {
+            pausePrompter();
+            prompterBox.scrollTop = 0;
+            appState.scrollAccumulator = 0;
+        }
+
+        function handlePrompterScroll() {
+            // Optional callback on scroll
+        }
+
+        function updateSpeedFromSlider(val) {
+            appState.speed = parseInt(val, 10);
+            speedDisplay.innerText = val;
+        }
+
+        function updateFontSize(val) {
+            appState.fontSize = parseInt(val, 10);
+            document.getElementById('fontsize-display').innerText = val;
+            applyPrompterStyles();
+        }
+
+        function updateMarginWidth(val) {
+            appState.marginWidth = parseInt(val, 10);
+            document.getElementById('margin-display').innerText = `${val}%`;
+            applyPrompterStyles();
+        }
+
+        function setTextAlign(align) {
+            appState.textAlign = align;
+            applyPrompterStyles();
+        }
+
+        function applyPrompterStyles() {
+            prompterText.style.fontSize = `${appState.fontSize}px`;
+            prompterText.style.textAlign = appState.textAlign;
+            prompterWrapper.style.maxWidth = `${appState.marginWidth}%`;
+        }
+
+        function toggleHudSettingsDrawer() {
+            const drawer = document.getElementById('hud-extra-settings');
+            drawer.classList.toggle('hidden');
+        }
+
+        async function toggleCamera() {
+            const videoEl = document.getElementById('webcam-video');
+            const btnText = document.getElementById('webcam-btn-text');
+
+            if (appState.webcamActive) {
+                // Turn off camera
+                if (webcamStream) {
+                    webcamStream.getTracks().forEach(track => track.stop());
+                }
+                videoEl.classList.add('hidden');
+                appState.webcamActive = false;
+                btnText.innerText = "開啟鏡頭背景";
+            } else {
+                // Turn on camera
+                try {
+                    webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    videoEl.srcObject = webcamStream;
+                    videoEl.classList.remove('hidden');
+                    appState.webcamActive = true;
+                    btnText.innerText = "關閉鏡頭背景";
+                } catch (err) {
+                    alert('無法讀取攝影機，請檢查瀏覽器權限與鏡頭連接！');
+                }
+            }
+        }
+
+        function toggleSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert('您的瀏覽器暫不支援 Web Speech 語音辨識功能，建議使用 Chrome 或 Edge 瀏覽器！');
+                return;
+            }
+
+            const btn = document.getElementById('btn-speech-sync');
+            const textEl = document.getElementById('speech-sync-text');
+
+            if (appState.speechSyncActive) {
+                if (speechRecognition) speechRecognition.stop();
+                appState.speechSyncActive = false;
+                btn.classList.replace('bg-rose-600', 'bg-slate-800');
+                textEl.innerText = "語音跟隨";
+            } else {
+                speechRecognition = new SpeechRecognition();
+                speechRecognition.continuous = true;
+                speechRecognition.interimResults = true;
+                speechRecognition.lang = 'zh-TW';
+
+                speechRecognition.onresult = (event) => {
+                    // Speech detected, advance prompter slightly
+                    prompterBox.scrollTop += 35;
+                };
+
+                speechRecognition.onerror = (e) => {
+                    console.log('Speech error:', e);
+                };
+
+                speechRecognition.start();
+                appState.speechSyncActive = true;
+                btn.classList.replace('bg-slate-800', 'bg-rose-600');
+                textEl.innerText = "辨識中...";
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {});
+                document.getElementById('fullscreen-icon').className = "fa-solid fa-compress text-base";
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                    document.getElementById('fullscreen-icon').className = "fa-solid fa-expand text-base";
+                }
+            }
+        }
+
+        function toggleKeyShortcutsModal() {
+            const modal = document.getElementById('modal-shortcuts');
+            modal.classList.toggle('hidden');
+        }
+
+        function handleGlobalKeydown(e) {
+            // Disable shortcuts if active inside textarea
+            if (document.activeElement === scriptInput && appState.mode === 'edit') return;
+
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (appState.mode === 'prompt') togglePlayPause();
+            } else if (e.code === 'ArrowUp') {
+                e.preventDefault();
+                const newSpeed = Math.min(100, appState.speed + 5);
+                sliderSpeed.value = newSpeed;
+                updateSpeedFromSlider(newSpeed);
+            } else if (e.code === 'ArrowDown') {
+                e.preventDefault();
+                const newSpeed = Math.max(1, appState.speed - 5);
+                sliderSpeed.value = newSpeed;
+                updateSpeedFromSlider(newSpeed);
+            } else if (e.code === 'ArrowRight') {
+                e.preventDefault();
+                const newSize = Math.min(96, appState.fontSize + 4);
+                document.getElementById('slider-fontsize').value = newSize;
+                updateFontSize(newSize);
+            } else if (e.code === 'ArrowLeft') {
+                e.preventDefault();
+                const newSize = Math.max(24, appState.fontSize - 4);
+                document.getElementById('slider-fontsize').value = newSize;
+                updateFontSize(newSize);
+            } else if (e.key === 'r' || e.key === 'R') {
+                if (appState.mode === 'prompt') resetPrompterScroll();
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            } else if (e.code === 'Escape') {
+                if (appState.mode === 'prompt') switchMode('edit');
+            }
+        }
+    </script>
+</body>
+</html>
